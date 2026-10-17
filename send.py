@@ -73,6 +73,50 @@ if w > 0 and 9 <= now.hour < 23 and water < goal:
     if log.get(slot) != today:
         msgs.append((slot, {'title': '💧 اشرب مية', 'body': f'مسجّل {water} من {goal} كوبايات', 'tag': 'water'}))
         log[slot] = today
+# evening "what's left" summary
+DEF_T = {'rest': {'k': 1800, 'p': 125, 'c': 190, 'f': 60}, 'pp': {'k': 2000, 'p': 125, 'c': 240, 'f': 60}, 'legs': {'k': 2200, 'p': 125, 'c': 300, 'f': 55}}
+TN = {'rest': 'راحة', 'pp': 'Push/Pull', 'legs': 'Legs'}
+def tgt(t):
+    return {**DEF_T.get(t, DEF_T['rest']), **((root.get('targets') or {}).get(t) or {})}
+def tot(es):
+    return {x: sum(float(e.get(x) or 0) for e in es) for x in 'kpcf'}
+sched = root.get('sched') or {}
+def dtype(d, ds):
+    js = (ds.weekday() + 1) % 7
+    return d.get('type') or sched.get(str(js)) or 'rest'
+ev = rem.get('e')
+if ev and log.get('e') != today:
+    h, m = map(int, ev.split(':'))
+    at = now.replace(hour=h, minute=m, second=0, microsecond=0)
+    if at <= now < at + datetime.timedelta(minutes=WINDOW*3):
+        log['e'] = today
+        if entries:
+            T, U = tgt(dtype(day, now)), tot(entries)
+            R = {x: T[x] - U[x] for x in 'kpcf'}
+            pr = '✅ البروتين اكتمل' if R['p'] <= 0 else f"بروتين {round(R['p'])} جم"
+            kc = f"{round(R['k'])} سعرة" if R['k'] >= 0 else f"زيادة {round(-R['k'])} سعرة"
+            body = f"فاضلك {kc} · {pr} · كارب {max(0, round(R['c']))} · دهون {max(0, round(R['f']))}"
+            msgs.append(('e', {'title': '📊 فاضلك كام النهارده', 'body': body, 'tag': 'eve'}))
+        else:
+            msgs.append(('e', {'title': '📊 لسه مسجلتش أكل النهارده', 'body': 'سجّل اللي أكلته عشان تعرف فاضلك كام', 'tag': 'eve'}))
+# Saturday weekly summary (Sat-Fri just finished)
+if rem.get('wk') and now.weekday() == 5 and now.hour == 10 and log.get('wk') != today:
+    log['wk'] = today
+    n, sk, sp, adh, Tk = 0, 0, 0, 0, 0
+    for i in range(7, 0, -1):
+        ds = now - datetime.timedelta(days=i)
+        d = get('/days/' + ds.strftime('%Y-%m-%d'))
+        es = d.get('entries') or []
+        if not es: continue
+        U, T = tot(es), tgt(dtype(d, ds))
+        n += 1; sk += U['k']; sp += U['p']; Tk += T['k']
+        if abs(U['k'] - T['k']) <= T['k'] * 0.1 and U['p'] >= T['p'] * 0.9: adh += 1
+    if n:
+        W = sorted(root.get('weights') or [], key=lambda x: x['d'])
+        wt = ''
+        if len(W) >= 2: wt = f" · الوزن {W[-1]['w']} ({W[-1]['w']-W[-2]['w']:+.1f})"
+        body = f"سجّلت {n}/7 أيام · متوسط {round(sk/n)} سعرة (الهدف {round(Tk/n)}) · بروتين {round(sp/n)} جم · {adh} أيام مظبوطة{wt}"
+        msgs.append(('wk', {'title': '🗓 ملخص الأسبوع', 'body': body, 'tag': 'week'}))
 alive = []
 for s in subs:
     ok = True
