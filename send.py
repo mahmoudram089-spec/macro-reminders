@@ -96,6 +96,26 @@ if ev and log.get('e') != today:
             pr = '✅ البروتين اكتمل' if R['p'] <= 0 else f"بروتين {round(R['p'])} جم"
             kc = f"{round(R['k'])} سعرة" if R['k'] >= 0 else f"زيادة {round(-R['k'])} سعرة"
             body = f"فاضلك {kc} · {pr} · كارب {max(0, round(R['c']))} · دهون {max(0, round(R['f']))}"
+            try:
+                import re
+                USE = re.compile(r'بروتين|واي|هايبرو|whey|protein', re.I)
+                PROC = re.compile(r'بسكويت|شوكولات|شكولات|سبريد|حلاوة|براوني|كيك|كوكيز|مربى|جيلي|جرانولا|سيرب|بديل العسل|فلامنكو|سناك|رايس كيك|بوبس|مشروب|مدخن|لانشون|سوسيس|شيبس|بيتزا|شاورما|برجر|توست|ويفر|آيس كريم|بانيه|كيتو بار|نوتيلا|صوص|عصير|بسبوسة|كنافة|تمر بالشوكولاتة')
+                tags = root.get('prTag') or {}
+                def pr(e):
+                    n = e.get('name') or ''
+                    if e.get('items'): return 0
+                    if n in tags: return int(tags[n])
+                    if USE.search(n) and 'سبريد' not in n: return 2
+                    return 1 if PROC.search(n) else 0
+                pk = sum(float(e.get('k') or 0) for e in entries if pr(e) == 1)
+                if U['k'] > 0:
+                    body += f" · مصنّع {round(pk / U['k'] * 100)}%"
+                    if pk > T['k'] * 0.2 and R['k'] > 150:
+                        body += ' — خلّي الباقي أكل طبيعي'
+                    elif R['p'] > 25 and R['k'] > 0:
+                        body += f" — العشا ما يقلّش عن {min(50, round(R['p']))} جم بروتين"
+            except Exception as ex:
+                print('pr note err', ex)
             msgs.append(('e', {'title': '📊 فاضلك كام النهارده', 'body': body, 'tag': 'eve'}))
         else:
             msgs.append(('e', {'title': '📊 لسه مسجلتش أكل النهارده', 'body': 'سجّل اللي أكلته عشان تعرف فاضلك كام', 'tag': 'eve'}))
