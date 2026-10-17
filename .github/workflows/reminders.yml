@@ -1,0 +1,27 @@
+name: macro-reminders
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/4057119612/locations/global/workloadIdentityPools/github/providers/github-oidc
+          service_account: macros-reminders@hr-etqanfurniture.iam.gserviceaccount.com
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - run: python send.py
+        env:
+          MACROS_UID: Uxklz8i9E9YN49VSsLQ9KRrXdJj1
+          FB_PROJECT: hr-etqanfurniture
