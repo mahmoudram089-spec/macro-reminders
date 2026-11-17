@@ -11,19 +11,19 @@ from pywebpush import webpush, WebPushException
 
 CAIRO = ZoneInfo('Africa/Cairo')
 SEND_FROM_H, SEND_UNTIL_H = int(os.environ.get('MONEY_FROM_H', '10')), int(os.environ.get('MONEY_UNTIL_H', '22'))
-DEF_SPLIT = {'needs': 35, 'wants': 15, 'save': 40, 'charity': 10}
+DEF_SPLIT = {'needs': 50, 'wants': 0, 'save': 45, 'charity': 5}  # v20: أساسيات + رغبات = «مصاريف» (needs)
 DEF_TYPES = {'inst': True, 'gam': True, 'charity': True, 'bill': True, 'loan': True, 'goal': True, 'budget': True, 'payday': True}
-DEF_XSPLIT = {'needs': 0, 'wants': 30, 'save': 60, 'charity': 10}   # v11: split of extra income (incomeType 'extra')
+DEF_XSPLIT = {'needs': 30, 'wants': 0, 'save': 65, 'charity': 5}   # v11: split of extra income (incomeType 'extra')
 PD_WEEKDAY = {'mon': 0, 'tue': 1, 'wed': 2, 'thu': 3, 'fri': 4, 'sat': 5, 'sun': 6}
 PAYDAY_AM_H, PAYDAY_PM_H = 10, 20
 # built-in category → bucket (same as DEF_CATS in app.js); user cats saved in root.cats override/extend it
 DEF_BUCKET = {'food': 'needs', 'trans': 'needs', 'bills': 'needs', 'home': 'needs', 'health': 'needs', 'family': 'needs', 'fee': 'needs', 'otherout': 'needs',
-              'outing': 'wants', 'shop': 'wants', 'fun': 'wants', 'subs': 'wants',
+              'outing': 'needs', 'shop': 'needs', 'fun': 'needs', 'subs': 'needs',
               'course': 'save', 'ai': 'save', 'tool': 'save', 'book': 'save', 'saving': 'save', 'invest': 'save',
               'inst': 'needs', 'gam': 'save', 'gamdebt': 'needs', 'goal': 'save', 'gold': 'save',
               'sadaqa': 'charity', 'zakat': 'charity', 'donate': 'charity',
               'svtr': 'save', 'svout': 'save', 'loanrep': 'save'}
-BK_N = {'needs': 'الأساسيات', 'wants': 'الرغبات', 'save': 'الادخار', 'charity': 'الصدقات'}
+BK_N = {'needs': 'المصاريف', 'wants': 'المصاريف', 'save': 'الادخار', 'charity': 'الصدقات'}
 
 
 # ---------------------------------------------------------------- date helpers (mirror app.js)
@@ -54,9 +54,12 @@ def compute(root, obl, tx, today, hour=None):
     before = int(nt.get('before', 2) if nt.get('before') is not None else 2)
     on_day = nt.get('onDay', True) is not False
     sp = st.get('split') or {}
-    if not all(k in sp for k in DEF_SPLIT) or abs(sum(float(sp[k] or 0) for k in DEF_SPLIT) - 100) > 0.01: sp = DEF_SPLIT
+    sp = {k: float(sp.get(k) or 0) for k in DEF_SPLIT}
+    if abs(sum(sp.values()) - 100) > 0.01: sp = dict(DEF_SPLIT)
+    sp['needs'] += sp['wants']; sp['wants'] = 0.0
     xs = {k: float((st.get('extraSplit') or {}).get(k) or 0) for k in DEF_XSPLIT}
-    if not st.get('extraSplit') or any(v < 0 for v in xs.values()) or abs(sum(xs.values()) - 100) > 0.01: xs = DEF_XSPLIT
+    if not st.get('extraSplit') or any(v < 0 for v in xs.values()) or abs(sum(xs.values()) - 100) > 0.01: xs = dict(DEF_XSPLIT)
+    xs['needs'] += xs['wants']; xs['wants'] = 0.0
     pd_wd = PD_WEEKDAY.get(st.get('payday') or 'wed', 2)
     is_payday = datetime.date.fromisoformat(today).weekday() == pd_wd
     pd_end = plus_days(today, 6)
@@ -65,7 +68,7 @@ def compute(root, obl, tx, today, hour=None):
     accs = {a['id']: a for a in (root.get('accounts') or [])}
     bucket = dict(DEF_BUCKET)
     for c in root.get('cats') or []:
-        if c.get('kind') == 'out' and c.get('bucket'): bucket[c['id']] = c['bucket']
+        if c.get('kind') == 'out' and c.get('bucket'): bucket[c['id']] = 'needs' if c['bucket'] == 'wants' else c['bucket']
     cur_m = ym(today)
     tx_by_obl = {}
     for tid, t in tx.items():
@@ -193,7 +196,7 @@ def compute(root, obl, tx, today, hour=None):
                           'date': f'{cur_m}-01', 'stage': 'month'})
     # تجاوز الميزانية: once per bucket per month
     if types.get('budget', True) and base > 0:
-        for b in ('needs', 'wants'):
+        for b in ('needs',):
             tgt = tg[b]
             if bk[b] > tgt + 0.5:
                 items.append({'key': f'budget:{b}:{cur_m}', 'ty': 'budget', 'title': f'⚠️ تجاوزت ميزانية {BK_N[b]}',
